@@ -7,7 +7,13 @@
 #install.packages("caTools")
 #install.packages("caret")
 #install.packages(c("survival", "survminer", "ggplot2"))
+install.packages("devtools")
+devtools::install_github("kassambara/survminer")
 
+install.packages("ggpubr")
+install.packages("maxstat")
+
+library(devtools)
 library(caret)
 library(mltools)
 library(tidyverse)
@@ -55,13 +61,12 @@ uromolV1 <- subset(uromolV1, select = -c(PFS_time., Tumor.stage, Tumor.grade))
 
 # Feature Selection
 # Make a correlation matrix of RNA expression data from training dataset
-correlationMatrix <- cor(uromolV1$exprs)
+#correlationMatrix <- cor(uromolV1$exprs)
 
 # Sum the absolute values across columns to evaluate the overall correlation between genes
-corrSum <- apply(correlationMatrix,1, function(x) sum(abs(x)))
+#corrSum <- apply(correlationMatrix,1, function(x) sum(abs(x)))
 
 # Select the 150 genes with the smallest absolute sum value as they are likely most informative for the classifier 
-#genes <- names(head(sort(corrSum),500))
 genes <- names(head(sort(corrSum),150))
 
 knowlesV2 <- knowlesV1
@@ -109,7 +114,8 @@ knowlesV2[, c("Progression", "Recurrence", "Sex", "Concomitant.CIS", "BCG", "URO
 
 
 # removing RFS_time since its definition is different for knowles dataset when recorrence == 0 and # replacing RFS_time with 0 whenever there is no recurrence, since it is N/A for cases with no recurrence in knowles dataset.
-knowlesV2 <- knowlesV2 %>% mutate(RFS_time = ifelse(Recurrence == 0, 0, RFS_time))
+max <- max(knowlesV2$RFS_time, na.rm = TRUE)
+knowlesV2 <- knowlesV2 %>% mutate(RFS_time = ifelse(Recurrence == 0, max, RFS_time))
 knowlesV4 <- drop_na(knowlesV2)
 uromolV4 <- drop_na(uromolV2)
 knowlesV4RFS_time <- knowlesV4$RFS_time
@@ -130,6 +136,7 @@ model <- data.frame("pred" = pred, "true" = knowlesV4$Recurrence)
 write_csv(model, file = "model2_rf.csv")
 #prSummary(knowlesV4, lev = levels(knowlesV4$Recurrence))
 # TODO ADD Kaplan-Meier curves
+model <- model_rf
 model$time <- knowlesV4RFS_time
 model1 <- subset(model, select = c("time","pred"))
 model1$source <- rep("pred", length(model$pred))
@@ -139,6 +146,7 @@ model2$source <- rep("true", length(model$pred))
 names(model2)[names(model2) == 'true'] <- 'event'
 
 survModel <- rbind(model1, model2)
+survModel$source <- factor(survModel$source) 
 
 surObj <- Surv(time = survModel$time, event = survModel$event)
 survivalfit <- survfit(surObj ~ source, data = survModel)
@@ -149,26 +157,3 @@ tidy_surv <- tidy(survfitted)
 
 ggplot(tidy_surv, aes(time, true)) + geom_line() 
 
-
-#ga_ctrl <- gafsControl(functions = caretGA)
-#rf_ga <- gafs(x = uromolV4, y = uromolV4$RFS_category, iters = 20, gafsControl = ga_ctrl, method = "rpart")
-
-#control <- trainControl(method="repeatedcv", number=10, repeats=3)
-
-#correlationMatrix <- cor(uromolV4$exprs)
-
-trellis.par.set(caretTheme())
-cal_obj <- calibration(Class ~ Recurrence, data = pred, cuts = 13)
-plot(cal_obj, type = "l", auto.key = list(columns = 3,
-                                          lines = TRUE,
-                                          points = FALSE))
-
-
-
-library(survival)
-library(survminer)
-library(dplyr)
-data(ovarian)
-glimpse(ovarian)
-surv_object <- Surv(time = ovarian$futime, event = ovarian$fustat)
-surv_object 
