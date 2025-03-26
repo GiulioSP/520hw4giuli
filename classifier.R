@@ -7,11 +7,6 @@
 #install.packages("caTools")
 #install.packages("caret")
 #install.packages(c("survival", "survminer", "ggplot2"))
-install.packages("devtools")
-devtools::install_github("kassambara/survminer")
-
-install.packages("ggpubr")
-install.packages("maxstat")
 
 library(devtools)
 library(caret)
@@ -61,10 +56,10 @@ uromolV1 <- subset(uromolV1, select = -c(PFS_time., Tumor.stage, Tumor.grade))
 
 # Feature Selection
 # Make a correlation matrix of RNA expression data from training dataset
-#correlationMatrix <- cor(uromolV1$exprs)
+correlationMatrix <- cor(uromolV1$exprs)
 
 # Sum the absolute values across columns to evaluate the overall correlation between genes
-#corrSum <- apply(correlationMatrix,1, function(x) sum(abs(x)))
+corrSum <- apply(correlationMatrix,1, function(x) sum(abs(x)))
 
 # Select the 150 genes with the smallest absolute sum value as they are likely most informative for the classifier 
 genes <- names(head(sort(corrSum),150))
@@ -114,8 +109,8 @@ knowlesV2[, c("Progression", "Recurrence", "Sex", "Concomitant.CIS", "BCG", "URO
 
 
 # removing RFS_time since its definition is different for knowles dataset when recorrence == 0 and # replacing RFS_time with 0 whenever there is no recurrence, since it is N/A for cases with no recurrence in knowles dataset.
-max <- max(knowlesV2$RFS_time, na.rm = TRUE)
-knowlesV2 <- knowlesV2 %>% mutate(RFS_time = ifelse(Recurrence == 0, max, RFS_time))
+#max <- max(knowlesV2$RFS_time, na.rm = TRUE)
+knowlesV2 <- knowlesV2 %>% mutate(RFS_time = ifelse(Recurrence == 0, 0, RFS_time))
 knowlesV4 <- drop_na(knowlesV2)
 uromolV4 <- drop_na(uromolV2)
 knowlesV4RFS_time <- knowlesV4$RFS_time
@@ -136,24 +131,22 @@ model <- data.frame("pred" = pred, "true" = knowlesV4$Recurrence)
 write_csv(model, file = "model2_rf.csv")
 #prSummary(knowlesV4, lev = levels(knowlesV4$Recurrence))
 # TODO ADD Kaplan-Meier curves
-model <- model_rf
+model <- model_rf #delete
 model$time <- knowlesV4RFS_time
-model1 <- subset(model, select = c("time","pred"))
-model1$source <- rep("pred", length(model$pred))
-names(model1)[names(model1) == 'pred'] <- 'event'
-model2 <- subset(model, select = c("time","true"))
-model2$source <- rep("true", length(model$pred))
-names(model2)[names(model2) == 'true'] <- 'event'
+#model1 <- subset(model, select = c("time","pred"))
+#model1$source <- rep("pred", length(model$pred))
+#names(model1)[names(model1) == 'pred'] <- 'event'
+#model2 <- subset(model, select = c("time","true"))
+#model2$source <- rep("true", length(model$pred))
+#names(model2)[names(model2) == 'true'] <- 'event'
 
-survModel <- rbind(model1, model2)
-survModel$source <- factor(survModel$source) 
+#survModel <- rbind(model1, model2)
+#survModel$source <- factor(survModel$source) 
 
 surObj <- Surv(time = survModel$time, event = survModel$event)
 survivalfit <- survfit(surObj ~ source, data = survModel)
 ggsurvplot(survivalfit)
 
-survfitted <- survival::survfit(Surv(survModel$time, event = survModel$event) ~ source, data = survModel)
-tidy_surv <- tidy(survfitted)
-
-ggplot(tidy_surv, aes(time, true)) + geom_line() 
-
+survTrue <- survfit(Surv(time = model$time, event = model$true)~ 1, data = model)
+survPred <- survfit(Surv(time = model$time, event = model$pred)~ 1, data = model)
+ggsurvplot_combine(list(survTrue, survPred), pval = TRUE, conf.int = TRUE, legend.labs = c("True", "Prediction"), palette = c("blue", "red"))
